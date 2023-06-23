@@ -212,3 +212,7 @@ num_rows = st.slider('Number of Rows to Display', 5, len(df_forecast), 10)
 
 # Display the specified number of rows
 st.write(df_forecast[['ds', 'actual', 'yhat', 'profit_loss', 'profit_loss_percentage']].head(num_rows))
+
+streamlit.run(app)
+streamlit.run(app, subdomain='alternative-subdomain')
+
