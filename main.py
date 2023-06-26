@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 from prophet import Prophet
 from plotly import graph_objs as go
-
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 TODAY = date.today().strftime("%Y-%m-%d")
 
 st.title('Stock Prediction')
@@ -40,37 +40,36 @@ def load_data(ticker):
     data.reset_index(inplace=True)
     return data
 
-	
-data_load_state = st.text('On the wayy!!')
-data = load_data(selected_stock)
-data_load_state.text('Hurrayyy!! here I am')
-
-st.subheader('Raw data')
-st.write(data.tail())
-
-
-# Perform train-test split
-train_data, test_data = train_test_split(data, test_size=0.2, random_state=42)
-
-# Prepare the features and labels
-train_features = train_data[['Open', 'High', 'Low', 'Volume']]
-train_labels = train_data['Close']
-test_features = test_data[['Open', 'High', 'Low', 'Volume']]
-test_labels = test_data['Close']
-
-# Train the random forest regression model
-model = RandomForestRegressor()
-model.fit(train_features, train_labels)
-
-# Predict on the test set
-predictions = model.predict(test_features)
 
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+# Load the data
+data = load_data(selected_stock)
 
-# Calculate regression evaluation metrics
-mse = mean_squared_error(test_labels, predictions)
-mae = mean_absolute_error(test_labels, predictions)
-r2 = r2_score(test_labels, predictions)
+def train_model(data):
+    # Perform train-test split
+    train_data, test_data = train_test_split(data, test_size=0.2, random_state=42)
+    # Prepare the features and labels
+    train_features = train_data[['Open', 'High', 'Low', 'Volume']]
+    train_labels = train_data['Close']
+    test_features = test_data[['Open', 'High', 'Low', 'Volume']]
+    test_labels = test_data['Close']
+
+    # Train the random forest regression model
+    model = RandomForestRegressor()
+    model.fit(train_features, train_labels)
+
+    # Predict on the test set
+    predictions = model.predict(test_features)
+
+    # Calculate regression evaluation metrics
+    mse = mean_squared_error(test_labels, predictions)
+    mae = mean_absolute_error(test_labels, predictions)
+    r2 = r2_score(test_labels, predictions)
+
+    return test_labels, predictions, mse, mae, r2
+
+# Call the train_model function and get the necessary values
+test_labels, predictions, mse, mae, r2 = train_model(data)
 
 # Display the metrics
 st.sidebar.subheader('Regression Evaluation Metrics')
@@ -78,15 +77,31 @@ st.sidebar.write('Mean Squared Error (MSE):', mse)
 st.sidebar.write('Mean Absolute Error (MAE):', mae)
 st.sidebar.write('R-squared (R2) Score:', r2)
 
+
+def calculate_metrics(test_labels, predictions):
+    from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+    mse = mean_squared_error(test_labels, predictions)
+    mae = mean_absolute_error(test_labels, predictions)
+    r2 = r2_score(test_labels, predictions)
+
+    return mse,mae,r2
+    
+data_load_state = st.text('On the wayy!!')
+data = load_data(selected_stock)
+data_load_state.text('Hurrayyy!! here I am')
+
+st.subheader('Raw data')
+st.write(data.tail())
+
 # Plot raw data
-def plot_raw_data():
+def plot_raw_data(data):
 	fig = go.Figure()
 	fig.add_trace(go.Scatter(x=data['Date'], y=data['Open'], name="stock_open"))
 	fig.add_trace(go.Scatter(x=data['Date'], y=data['Close'], name="stock_close"))
 	fig.layout.update(title_text='Time Series ', xaxis_rangeslider_visible=True)
 	st.plotly_chart(fig)
 	
-plot_raw_data()
+plot_raw_data(data)
 
 
 
@@ -119,15 +134,7 @@ fig2 = m.plot_components(forecast)
 st.write(fig2)
 
 
-# Performance Metrics and Stock Recommendation
-st.sidebar.title('Performance Metrics')
-st.sidebar.subheader('Select metrics thresholds')
 
-metric_thresholds = {
-    'MAPE': st.sidebar.slider('Mean Absolute Percentage Error (MAPE)', 0.0, 100.0, 10.0),
-    'RMSE': st.sidebar.slider('Root Mean Square Error (RMSE)', 0.0, 100.0, 10.0),
-    'MAE': st.sidebar.slider('Mean Absolute Error (MAE)', 0.0, 100.0, 10.0),
-}
 
 # Calculate performance metrics
 actual_values = data['Close'].values[-period:]
@@ -136,63 +143,34 @@ predicted_values = forecast['yhat'].values[-period:]
 mape = (abs(actual_values - predicted_values) / actual_values).mean() * 100
 rmse = ((actual_values - predicted_values) ** 2).mean() ** 0.5
 mae = abs(actual_values - predicted_values).mean()
-
+#load and display raw data
 st.sidebar.subheader('Performance Metrics')
 st.sidebar.write('MAPE:', round(mape, 2))
 st.sidebar.write('RMSE:', round(rmse, 2))
 st.sidebar.write('MAE:', round(mae, 2))
 
 
-# Stock Recommendation based on metrics thresholds
-st.sidebar.subheader('Stock Recommendation')
+# Sidebar section
+st.sidebar.title('Performance Metrics')
+st.sidebar.subheader('Select metrics thresholds')
 
-recommendation = []
+# Generate unique keys for each slider widget
+mape_threshold = st.sidebar.slider('Mean Absolute Percentage Error (MAPE)', 0.0, 100.0, 10.0, key='mape_threshold')
+rmse_threshold = st.sidebar.slider('Root Mean Square Error (RMSE)', 0.0, 100.0, 10.0, key='rmse_threshold')
+mae_threshold = st.sidebar.slider('Mean Absolute Error (MAE)', 0.0, 100.0, 10.0, key='mae_threshold')
 
-if mape <= metric_thresholds['MAPE']:
-    recommendation.append('MAPE')
-if rmse <= metric_thresholds['RMSE']:
-    recommendation.append('RMSE')
-if mae <= metric_thresholds['MAE']:
-    recommendation.append('MAE')
+# Update best stock recommendation when the button is clicked
+if st.sidebar.button('Update Best Stock'):
+    # Create a dictionary of thresholds
+    metric_thresholds = {
+        'MAPE': mape_threshold,
+        'RMSE': rmse_threshold,
+        'MAE': mae_threshold
+    }
 
-if recommendation:
-    st.sidebar.write('Consider investing in', ', '.join(recommendation), 'metric(s)')
-else:
-    st.sidebar.write('No stock recommendation based on the provided thresholds')
-
-
-# Stock Recommendation based on metrics thresholds
-st.sidebar.subheader('Best Stock to Invest')
-
-stock_metrics = {
-    'AAPL': {'MAPE': 8.2, 'RMSE': 5.6, 'MAE': 3.8},
-    'GOOGL': {'MAPE': 9.5, 'RMSE': 6.2, 'MAE': 4.1},
-    'MSFT': {'MAPE': 7.8, 'RMSE': 5.3, 'MAE': 3.6},
-    'GME': {'MAPE': 12.6, 'RMSE': 8.9, 'MAE': 5.7},
-    'AMZN': {'MAPE': 8.9, 'RMSE': 6.5, 'MAE': 4.2},
-    'NFLX': {'MAPE': 10.4, 'RMSE': 7.3, 'MAE': 4.8},
-    'META': {'MAPE': 6.1, 'RMSE': 4.9, 'MAE': 3.2},
-    'DIS': {'MAPE': 7.3, 'RMSE': 5.1, 'MAE': 3.4}
-}
-
-best_stock = None
-best_metric = None
-
-
-# Calculate metrics and find the best stock
-for stock, metrics in stock_metrics.items():
-    if best_stock is None or metrics[best_metric] < stock_metrics[best_stock][best_metric]:
-        best_stock = stock
-        best_metric = min(metrics, key=lambda x: metrics[x])
-
-
-# Suggest the best stock to invest in
-if best_stock is not None:
-
-    st.sidebar.write(f"The best stock to invest in based on the selected metrics is: {best_stock}")
-else:
-    st.subheader('No Best Stock Found')
-    st.sidebar.write("No stock found based on the selected metrics. Please adjust the sliders.")
+    best_stock_recommendation = calculate_best_stock(metric_thresholds, stock_metrics)
+    st.sidebar.subheader('Best Stock to Invest')
+    st.sidebar.write(best_stock_recommendation)
 
 # Calculate profit/loss matrix
 df_forecast = forecast[['ds', 'yhat']]
@@ -204,13 +182,28 @@ df_forecast['actual'] = pd.Series(data_close, index=df_forecast.index[:len(data_
 df_forecast['profit_loss'] = df_forecast['actual'] - df_forecast['yhat']
 df_forecast['profit_loss_percentage'] = (df_forecast['profit_loss'] / df_forecast['actual']) * 100
 
-st.subheader('Profit/Loss Matrix')
+# Calculate the best stock based on the lowest overall loss (highest negative profit_loss)
+best_stock = df_forecast[df_forecast['profit_loss'] == df_forecast['profit_loss'].min()]['ds'].values[0]
 
+# Calculate the performance metrics for each stock
+performance_metrics = {}
+for stock in stocks:
+    # Load the data for the current stock
+    stock_data = load_data(stock)
+    # Train the model
+    _, _, mse, mae, _ = train_model(stock_data)
+    # Store the performance metrics
+    performance_metrics[stock] = {'MSE': mse, 'MAE': mae}
 
-# Add a slider for the number of rows to display
-num_rows = st.slider('Number of Rows to Display', 5, len(df_forecast), 10)
+# Sort the stocks based on the lowest MSE
+sorted_stocks = sorted(performance_metrics.items(), key=lambda x: x[1]['MSE'])
 
-# Display the specified number of rows
-st.write(df_forecast[['ds', 'actual', 'yhat', 'profit_loss', 'profit_loss_percentage']].head(num_rows))
+# Select the best stock with the lowest MSE
+best_stock = sorted_stocks[0][0]
+
+# Display the best stock
+st.sidebar.subheader('Best Stock to Invest')
+st.sidebar.write(best_stock)
+
 
 
